@@ -1,0 +1,98 @@
+THAMES WATER – EMERGENCY NETWORK DEFENCE SCRIPT
+
+Purpose:
+Mitigate command-and-control (C2) communication, detect suspicious outbound traffic, and identify unauthorised ICS (Modbus) activity.
+
+--------------------------------------------------------------------
+
+#!/bin/bash
+
+# --------------------------------------------------------------------
+# Thames Water – Emergency Network Defence Script
+# --------------------------------------------------------------------
+
+C2_IP="203.0.113.5"
+LOG="/var/log/thames_ics_defence.log"
+
+echo "-----------------------------------------------------------------" | tee -a $LOG
+echo "[+] Emergency Defence Script Started on $(date)" | tee -a $LOG
+echo "-----------------------------------------------------------------" | tee -a $LOG
+
+# --------------------------------------------------------------------
+# 1. Block known Command-and-Control (C2) server
+# --------------------------------------------------------------------
+
+echo "[+] Blocking outbound and inbound traffic to C2 server: $C2_IP" | tee -a $LOG
+
+iptables -A OUTPUT -d $C2_IP -j DROP
+iptables -A INPUT -s $C2_IP -j DROP
+
+# --------------------------------------------------------------------
+# 2. Detect suspicious outbound connections
+# --------------------------------------------------------------------
+
+echo "[+] Scanning for suspicious outbound connections..." | tee -a $LOG
+
+netstat -ntp | grep ESTABLISHED | awk '{print $5}' | cut -d':' -f1 | while read ip
+do
+
+    # Filter non-private IPs
+    if [[ ! $ip =~ ^10\. && ! $ip =~ ^192\.168\. && ! $ip =~ ^172\.(1[6-9]|2[0-9]|3[0-1]) ]]; then
+
+        echo "[!] Suspicious external connection detected: $ip" | tee -a $LOG
+
+        iptables -A OUTPUT -d $ip -j DROP
+
+    fi
+
+done
+
+# --------------------------------------------------------------------
+# 3. Detect unauthorised Modbus (TCP/502) activity
+# --------------------------------------------------------------------
+
+echo "[+] Checking for unauthorised Modbus (port 502) traffic..." | tee -a $LOG
+
+tcpdump -nn -c 20 'tcp port 502' 2>/tmp/modbus_capture.txt
+
+if [ -s /tmp/modbus_capture.txt ]; then
+
+    echo "[!] ALERT: Modbus activity detected - possible PLC manipulation attempt" | tee -a $LOG
+
+    cat /tmp/modbus_capture.txt | tee -a $LOG
+
+else
+
+    echo "[+] No Modbus traffic detected." | tee -a $LOG
+
+fi
+
+# --------------------------------------------------------------------
+# 4. Harden SMB to reduce lateral movement risk
+# --------------------------------------------------------------------
+
+echo "[+] Hardening SMB configuration to disable SMBv1..." | tee -a $LOG
+
+if grep -q "\[global\]" /etc/samba/smb.conf; then
+
+    sed -i '/^\[global\]/a server min protocol = SMB2' /etc/samba/smb.conf
+
+    systemctl restart smbd 2>/dev/null
+
+    echo "[+] SMBv1 disabled. SMB service restarted." | tee -a $LOG
+
+else
+
+    echo "[!] smb.conf missing or misconfigured – check manually." | tee -a $LOG
+
+fi
+
+# --------------------------------------------------------------------
+# 5. Finished
+# --------------------------------------------------------------------
+
+echo "-----------------------------------------------------------------" | tee -a $LOG
+
+echo "[+] Defence Script Completed at $(date)" | tee -a $LOG
+
+echo "-----------------------------------------------------------------" | tee -a $LOG

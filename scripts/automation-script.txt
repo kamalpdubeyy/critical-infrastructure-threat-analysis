@@ -1,0 +1,109 @@
+AUTOMATION SCRIPTS
+
+Purpose:
+This file contains automation commands and scripts used to support network traffic analysis, suspicious activity detection, and incident response tasks during the Critical Infrastructure Threat Analysis project.
+
+------------------------------------------------------------
+SCRIPT 1: PCAP QUICK ANALYSIS AUTOMATION
+------------------------------------------------------------
+
+#!/bin/bash
+
+PCAP_FILE="Thames_water_attack.pcap"
+OUTPUT_DIR="analysis-output"
+
+mkdir -p $OUTPUT_DIR
+
+echo "[+] Starting PCAP quick analysis..."
+
+echo "[+] Generating IP conversation summary..."
+tshark -r $PCAP_FILE -q -z conv,ip > $OUTPUT_DIR/ip-conversations.txt
+
+echo "[+] Generating TCP conversation summary..."
+tshark -r $PCAP_FILE -q -z conv,tcp > $OUTPUT_DIR/tcp-conversations.txt
+
+echo "[+] Detecting SYN scan activity..."
+tshark -r $PCAP_FILE \
+-Y "tcp.flags.syn==1 && tcp.flags.ack==0" \
+-T fields -e ip.src -e ip.dst -e tcp.dstport | sort | uniq -c | sort -nr > $OUTPUT_DIR/syn-scan-results.txt
+
+echo "[+] Extracting Modbus traffic..."
+tshark -r $PCAP_FILE \
+-Y "tcp.port==502" \
+-T fields -e frame.time -e ip.src -e ip.dst -e tcp.srcport -e tcp.dstport > $OUTPUT_DIR/modbus-traffic.txt
+
+echo "[+] Extracting DNS queries..."
+tshark -r $PCAP_FILE \
+-Y "dns.qry.name" \
+-T fields -e frame.time -e ip.src -e dns.qry.name > $OUTPUT_DIR/dns-queries.txt
+
+echo "[+] Extracting HTTP requests..."
+tshark -r $PCAP_FILE \
+-Y "http.request" \
+-T fields -e frame.time -e ip.src -e ip.dst -e http.host -e http.request.method -e http.request.uri > $OUTPUT_DIR/http-requests.txt
+
+echo "[+] PCAP quick analysis completed."
+echo "[+] Results saved in: $OUTPUT_DIR"
+
+
+------------------------------------------------------------
+SCRIPT 2: C2 DETECTION AUTOMATION
+------------------------------------------------------------
+
+#!/bin/bash
+
+PCAP_FILE="Thames_water_attack.pcap"
+C2_IP="203.0.113.5"
+OUTPUT_FILE="c2-analysis.txt"
+
+echo "[+] Searching for communication with suspected C2 IP: $C2_IP" > $OUTPUT_FILE
+
+tshark -r $PCAP_FILE \
+-Y "ip.addr==$C2_IP" \
+-T fields -e frame.time -e ip.src -e ip.dst -e tcp.srcport -e tcp.dstport -e tcp.len >> $OUTPUT_FILE
+
+echo "[+] C2 analysis completed. Results saved to $OUTPUT_FILE"
+
+
+------------------------------------------------------------
+SCRIPT 3: MODBUS TRAFFIC DETECTION AUTOMATION
+------------------------------------------------------------
+
+#!/bin/bash
+
+PCAP_FILE="Thames_water_attack.pcap"
+OUTPUT_FILE="modbus-analysis.txt"
+
+echo "[+] Analysing Modbus traffic on TCP port 502..." > $OUTPUT_FILE
+
+tshark -r $PCAP_FILE \
+-Y "tcp.port==502" \
+-T fields -e frame.time -e ip.src -e ip.dst -e modbus.func_code >> $OUTPUT_FILE
+
+echo "[+] Modbus analysis completed. Results saved to $OUTPUT_FILE"
+
+
+------------------------------------------------------------
+SCRIPT 4: SUSPICIOUS EXTERNAL CONNECTION DETECTION
+------------------------------------------------------------
+
+#!/bin/bash
+
+PCAP_FILE="Thames_water_attack.pcap"
+OUTPUT_FILE="external-connections.txt"
+
+echo "[+] Identifying external connections..." > $OUTPUT_FILE
+
+tshark -r $PCAP_FILE \
+-Y "ip && !(ip.dst >= 10.0.0.0 && ip.dst <= 10.255.255.255)" \
+-T fields -e frame.time -e ip.src -e ip.dst >> $OUTPUT_FILE
+
+echo "[+] External connection analysis completed. Results saved to $OUTPUT_FILE"
+
+
+------------------------------------------------------------
+DISCLAIMER
+------------------------------------------------------------
+
+These scripts were created for a controlled academic cybersecurity project.
+They are intended for educational, defensive, and analysis purposes only.
